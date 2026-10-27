@@ -24,6 +24,6 @@ stripped static musl binary, final image `FROM scratch` + static busybox for an 
   Never run `docker system prune -a` and never remove images not named `ardu-min/*`.
 - No sudo, no apt, no pip installs on the host. Python tooling lives inside containers.
 - If the same error happens 3 times, stop and report back with the log tail. Don't loop.
-- Don't commit, branch or push; the tech lead does git. Just leave files in the working tree.
+- Don't commit, branch or push; the tech lead does git (pushes via git@github.com:orcunkok/ardu-docker-minimal.git, HTTPS has no creds).
 - Keep files short and commented like a minimal project. No over-engineering.
 - Report: what you changed, exact commands run, image sizes (`docker image ls ardu-min/*`), and anything unverified.
