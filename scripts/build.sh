@@ -1,5 +1,6 @@
 #!/bin/sh
-# Usage: scripts/build.sh [vehicle] [--rebuild]   Builds builder -> src -> sitl.
+# Usage: scripts/build.sh [copter|plane|rover|sub] [--rebuild]   Builds builder -> src -> sitl.
+# All vehicles are in one ArduPilot repo at the Copter-4.7.2 commit, so they share the src image.
 set -eu
 cd "$(dirname "$0")/.."
 VEHICLE=copter; REBUILD=0
