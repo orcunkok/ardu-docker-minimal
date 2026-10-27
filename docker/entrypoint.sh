@@ -1,6 +1,10 @@
 #!/bin/sh
 # Maps env vars to ArduPilot SITL args (busybox sh, POSIX). Extra args are passed through.
-MODEL=${MODEL:-+}
+# Default frame model per vehicle (from Tools/autotest/pysim/vehicleinfo.py); MODEL overrides.
+case ${VEHICLE:-copter} in
+  plane) MODEL=${MODEL:-plane};; rover) MODEL=${MODEL:-rover};;
+  sub) MODEL=${MODEL:-vectored};; *) MODEL=${MODEL:-+};;
+esac
 HOME_LOC=${HOME_LOC:--35.363261,149.165230,584,353}
 INSTANCE=${INSTANCE:-0}
 SYSID=${SYSID:-1}

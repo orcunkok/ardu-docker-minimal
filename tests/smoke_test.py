@@ -1,4 +1,5 @@
-"""Minimal SITL smoke test: connect -> arm -> takeoff -> land -> disarmed."""
+"""Minimal SITL smoke test. copter: connect -> arm -> takeoff -> land -> disarmed.
+plane/rover/sub (VEHICLE env): connect -> arm -> disarm."""
 import os
 import sys
 import time
@@ -6,6 +7,8 @@ import time
 from pymavlink import mavutil
 
 URL = os.environ.get("MAV_URL", "tcp:127.0.0.1:5760")
+VEHICLE = os.environ.get("VEHICLE", "copter")
+MODE = {"copter": "GUIDED", "plane": "GUIDED"}.get(VEHICLE, "MANUAL")
 ALT = float(os.environ.get("TAKEOFF_ALT", "10"))
 
 
@@ -61,8 +64,8 @@ m.mav.request_data_stream_send(m.target_system, m.target_component,
 
 
 def ensure_guided():
-    m.set_mode("GUIDED")
-    wait_until(m, lambda h: mavutil.mode_string_v10(h) == "GUIDED", "HEARTBEAT", 10, "GUIDED")
+    m.set_mode(MODE)
+    wait_until(m, lambda h: mavutil.mode_string_v10(h) == MODE, "HEARTBEAT", 10, MODE)
 
 
 def drain_statustext():
@@ -81,7 +84,17 @@ while True:
         fail("could not arm")
     drain_statustext()
     time.sleep(2)
-step("armed in GUIDED")
+step(f"armed in {MODE}")
+
+if VEHICLE != "copter":  # light test: just disarm again
+    time.sleep(2)
+    if not command(m, mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 0, 21196):
+        fail("could not disarm")
+    wait_until(m, lambda h: not h.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED,
+               "HEARTBEAT", 10, "disarm")
+    step("disarmed")
+    step("PASS")
+    sys.exit(0)
 
 if not command(m, mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0, 0, 0, 0, 0, 0, ALT):
     drain_statustext()

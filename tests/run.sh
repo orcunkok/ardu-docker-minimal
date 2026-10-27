@@ -4,6 +4,7 @@
 set -eu
 VEHICLE=${1:-copter}
 IMAGE=ardu-min/sitl:$VEHICLE
+EXTRA=${EXTRA:-}  # extra docker run args, e.g. -v ./x:/params/extra
 MAX_MB=${MAX_MB:-15}
 NET=ardu-min-test
 SITL=ardu-min-sitl
@@ -23,8 +24,8 @@ docker build -q -t ardu-min/test:latest . >/dev/null
 cleanup
 docker network create "$NET" >/dev/null
 docker run -d --name "$SITL" --network "$NET" --label project=ardu-docker-minimal \
-  -e SPEEDUP="${SPEEDUP:-1}" "$IMAGE" >/dev/null
+  -e SPEEDUP="${SPEEDUP:-1}" $EXTRA "$IMAGE" >/dev/null
 if ! docker run --rm --network "$NET" --label project=ardu-docker-minimal \
-     -e MAV_URL="tcp:$SITL:5760" ardu-min/test:latest; then
+     -e VEHICLE="$VEHICLE" -e MAV_URL="tcp:$SITL:5760" ardu-min/test:latest; then
   echo "--- SITL log tail ---"; docker logs --tail 40 "$SITL"; exit 1
 fi

@@ -1,0 +1,16 @@
+# Example: two copter SITL instances. Build first: scripts/build.sh copter
+# Each container runs INSTANCE=0 internally (port 5760); the host ports differ.
+services:
+  copter1:
+    image: ardu-min/sitl:copter
+    environment:
+      SYSID: "1"
+      # SERIAL1: "udpclient:host.docker.internal:14550"   # MAVLink to a host GCS
+    # extra_hosts: ["host.docker.internal:host-gateway"]  # needed on Linux for the line above
+    ports: ["5760:5760"]
+  copter2:
+    image: ardu-min/sitl:copter
+    environment:
+      SYSID: "2"
+      HOME_LOC: "-35.363261,149.166230,584,353"  # offset start so the copters don't overlap
+    ports: ["5770:5760"]

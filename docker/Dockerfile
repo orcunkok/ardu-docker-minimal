@@ -1,4 +1,4 @@
-# Final SITL image: static musl binary + static busybox on scratch.
+# Final SITL image (all vehicles live in the one Copter-4.7.2 repo checkout: copter|plane|rover|sub): static musl binary + static busybox on scratch.
 ARG AP_TAG=Copter-4.7.2
 FROM ardu-min/src:${AP_TAG} AS build
 ARG VEHICLE=copter
@@ -14,8 +14,10 @@ RUN mkdir -p /rootfs/usr/bin /rootfs/bin /rootfs/params/extra /rootfs/data/logs 
 
 FROM scratch
 LABEL project=ardu-docker-minimal
+ARG VEHICLE=copter
+ENV VEHICLE=${VEHICLE}
 COPY --from=build /rootfs/ /
-COPY params/copter.parm /params/defaults.parm
+COPY params/${VEHICLE}.parm /params/defaults.parm
 COPY docker/entrypoint.sh /entrypoint.sh
 USER 1000:1000
 WORKDIR /data
