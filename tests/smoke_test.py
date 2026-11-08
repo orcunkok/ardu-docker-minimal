@@ -1,15 +1,17 @@
-"""Minimal SITL smoke test. copter: connect -> arm -> takeoff -> land -> disarmed.
-plane/rover/sub (VEHICLE env): connect -> arm -> disarm."""
+"""PX4 X500 SITL smoke test.
+GCS link (MAV_URL, UDP 18570): connect -> arm -> takeoff -> land -> auto-disarm.
+API link (API_URL, UDP 14580, what MAVSDK/OBC software uses): heartbeat + attitude stream."""
+import math
 import os
 import sys
 import time
 
 from pymavlink import mavutil
 
-URL = os.environ.get("MAV_URL", "tcp:127.0.0.1:5760")
-VEHICLE = os.environ.get("VEHICLE", "copter")
-MODE = {"copter": "GUIDED", "plane": "GUIDED"}.get(VEHICLE, "MANUAL")
+URL = os.environ.get("MAV_URL", "udpout:127.0.0.1:18570")
+API_URL = os.environ.get("API_URL", "udpout:127.0.0.1:14580")
 ALT = float(os.environ.get("TAKEOFF_ALT", "10"))
+mav = mavutil.mavlink
 
 
 def step(msg):
@@ -22,15 +24,15 @@ def fail(msg):
 
 
 def connect(url, timeout=60):
+    # PX4 replies to whoever talks first, so keep sending our heartbeat until it answers.
+    m = mavutil.mavlink_connection(url, source_system=255)
     deadline = time.time() + timeout
     while time.time() < deadline:
-        try:
-            m = mavutil.mavlink_connection(url, source_system=255)
-            if m.wait_heartbeat(timeout=10):
-                return m
-        except OSError:
-            pass
-        time.sleep(1)
+        m.mav.heartbeat_send(mav.MAV_TYPE_GCS, mav.MAV_AUTOPILOT_INVALID, 0, 0, 0)
+        hb = m.recv_match(type="HEARTBEAT", blocking=True, timeout=1)
+        if hb is not None and hb.get_srcComponent() == 1:
+            m.target_system, m.target_component = hb.get_srcSystem(), 1
+            return m
     fail(f"no heartbeat from {url}")
 
 
@@ -43,7 +45,7 @@ def command(m, cmd, *params):
         if ack is not None and ack.command == cmd:
             if ack.result:
                 step(f"  {cmd} -> result {ack.result}")
-            return ack.result == mavutil.mavlink.MAV_RESULT_ACCEPTED
+            return ack.result == mav.MAV_RESULT_ACCEPTED
     return False
 
 
@@ -56,55 +58,48 @@ def wait_until(m, pred, msg_type, timeout, what):
     fail(f"timeout waiting for {what}")
 
 
-m = connect(URL)
-step(f"heartbeat from sys {m.target_system} comp {m.target_component}")
-m.mav.request_data_stream_send(m.target_system, m.target_component,
-                               mavutil.mavlink.MAV_DATA_STREAM_ALL, 4, 1)
-
-
-
-def ensure_guided():
-    m.set_mode(MODE)
-    wait_until(m, lambda h: mavutil.mode_string_v10(h) == MODE, "HEARTBEAT", 10, MODE)
-
-
-def drain_statustext():
+def drain_statustext(m):
     while (t := m.recv_match(type="STATUSTEXT", blocking=False)) is not None:
         step(f"  vehicle: {t.text}")
 
 
-# Arming is refused until EKF/GPS settle, and the RC mode switch can reset the
-# mode during boot, so re-assert GUIDED before every attempt.
+def armed(h):
+    return bool(h.base_mode & mav.MAV_MODE_FLAG_SAFETY_ARMED)
+
+
+# --- GCS link: fly ---
+m = connect(URL)
+step(f"GCS link: heartbeat from sys {m.target_system} ({URL})")
+home = wait_until(m, lambda p: p.lat != 0, "GLOBAL_POSITION_INT", 60, "position fix")
+step(f"position {home.lat / 1e7:.6f},{home.lon / 1e7:.6f} alt {home.alt / 1000:.1f} m AMSL")
+
+# Arming is refused until the EKF/GPS checks pass, so retry.
 deadline = time.time() + 120
-while True:
-    ensure_guided()
-    if command(m, mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 1):
-        break
+while not command(m, mav.MAV_CMD_COMPONENT_ARM_DISARM, 1):
+    drain_statustext(m)
     if time.time() > deadline:
         fail("could not arm")
-    drain_statustext()
     time.sleep(2)
-step(f"armed in {MODE}")
+step("armed")
 
-if VEHICLE != "copter":  # light test: just disarm again
-    time.sleep(2)
-    if not command(m, mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 0, 21196):
-        fail("could not disarm")
-    wait_until(m, lambda h: not h.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED,
-               "HEARTBEAT", 10, "disarm")
-    step("disarmed")
-    step("PASS")
-    sys.exit(0)
-
-if not command(m, mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0, 0, 0, 0, 0, 0, ALT):
-    drain_statustext()
+# PX4 NAV_TAKEOFF param7 is altitude AMSL.
+if not command(m, mav.MAV_CMD_NAV_TAKEOFF, -1, 0, 0, math.nan, math.nan, math.nan,
+               home.alt / 1000 + ALT):
+    drain_statustext(m)
     fail("takeoff rejected")
 pos = wait_until(m, lambda p: p.relative_alt >= (ALT - 1) * 1000,
                  "GLOBAL_POSITION_INT", 60, f"altitude {ALT - 1} m")
 step(f"reached {pos.relative_alt / 1000:.1f} m")
 
-m.set_mode("LAND")
-wait_until(m, lambda h: not h.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED,
-           "HEARTBEAT", 90, "landing and disarm")
+if not command(m, mav.MAV_CMD_NAV_LAND, 0, 0, 0, math.nan, math.nan, math.nan, math.nan):
+    fail("land rejected")
+step("landing")
+wait_until(m, lambda h: not armed(h), "HEARTBEAT", 90, "landing and auto-disarm")
 step("landed and disarmed")
+
+# --- API link: what MAVSDK / the OBC software sees ---
+a = connect(API_URL)
+step(f"API link: heartbeat from sys {a.target_system} ({API_URL})")
+att = wait_until(a, lambda x: True, "ATTITUDE", 10, "ATTITUDE on API link")
+step(f"API link: attitude roll {math.degrees(att.roll):.1f} pitch {math.degrees(att.pitch):.1f} deg")
 step("PASS")

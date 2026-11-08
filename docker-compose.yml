@@ -1,16 +1,17 @@
-# Example: two copter SITL instances. Build first: scripts/build.sh copter
-# Each container runs INSTANCE=0 internally (port 5760); the host ports differ.
+# Example: two X500 SITL instances. Build first: DOCKER_BUILDKIT=0 docker build -t px4-x500/sitl .
+# Each container runs INSTANCE=0 internally (UDP 18570 GCS, 14580 API); the host ports differ.
 services:
-  copter1:
-    image: ardu-min/sitl:copter
+  x500_1:
+    image: px4-x500/sitl:latest
     environment:
       SYSID: "1"
-      # SERIAL1: "udpclient:host.docker.internal:14550"   # MAVLink to a host GCS
-    # extra_hosts: ["host.docker.internal:host-gateway"]  # needed on Linux for the line above
-    ports: ["5760:5760"]
-  copter2:
-    image: ardu-min/sitl:copter
+      # GCS_HOST: "host.docker.internal"   # push MAVLink to a host GCS on 14550 (QGC auto-connect)
+      # API_HOST: "192.168.1.50"           # push the API link to the OBC on 14540
+    # extra_hosts: ["host.docker.internal:host-gateway"]  # needed on Linux for GCS_HOST above
+    ports: ["18570:18570/udp", "14580:14580/udp"]
+  x500_2:
+    image: px4-x500/sitl:latest
     environment:
       SYSID: "2"
-      HOME_LOC: "-35.363261,149.166230,584,353"  # offset start so the copters don't overlap
-    ports: ["5770:5760"]
+      HOME_LOC: "47.397742,8.546594,488"  # offset start so the drones don't overlap
+    ports: ["18571:18570/udp", "14581:14580/udp"]
