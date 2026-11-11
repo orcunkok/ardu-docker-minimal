@@ -16,11 +16,9 @@ RUN git submodule update --init --depth 1 \
     src/lib/cdrstream/cyclonedds src/lib/cdrstream/rosidl \
     src/lib/crypto/monocypher src/lib/crypto/libtomcrypt src/lib/crypto/libtommath \
  && git -C src/modules/mavlink/mavlink submodule update --init --recursive --depth 1
-COPY 10050_sihsim_x500 ROMFS/px4fmu_common/init.d-posix/airframes/
-# Patches: musl lacks TCGETS2/TCSETS2 (sbus.cpp); register the X500 airframe;
+# Patches: musl lacks TCGETS2/TCSETS2 (sbus.cpp);
 # let the GCS/API links push to a target IP (PX4_GCS_IP / PX4_API_IP, set by the entrypoint).
 RUN sed -i "s|#include <asm-generic/termbits.h>|&\n#ifndef TCGETS2\n#define TCGETS2 _IOR('T', 0x2A, struct termios2)\n#define TCSETS2 _IOW('T', 0x2B, struct termios2)\n#endif|" src/lib/rc/sbus.cpp \
- && sed -i 's/^\t10040_sihsim_quadx$/&\n\t10050_sihsim_x500/' ROMFS/px4fmu_common/init.d-posix/airframes/CMakeLists.txt \
  && sed -i -e 's|^mavlink start -x -u $udp_gcs_port_local .*|& ${PX4_GCS_IP:+-t $PX4_GCS_IP}|' \
            -e 's|^mavlink start -x -u $udp_offboard_port_local .*|& ${PX4_API_IP:+-t $PX4_API_IP}|' \
            ROMFS/px4fmu_common/init.d-posix/px4-rc.mavlink \
@@ -33,7 +31,7 @@ RUN B=build/px4_sitl_default R=/rootfs \
  && cp /px4-bin $R/px4/bin/px4 && cp $B/bin/px4-alias.sh $R/px4/bin/ \
  && for l in $B/bin/px4-*; do [ -L "$l" ] && ln -s px4 $R/px4/bin/$(basename $l); done \
  && cp -r $B/etc $R/px4/etc \
- && find $R/px4/etc/init.d-posix/airframes -type f ! -name '10050_sihsim_x500*' -delete \
+ && find $R/px4/etc/init.d-posix/airframes -type f -delete \
  && cp /bin/busybox.static $R/bin/busybox \
  && for a in sh bc basename dirname sed ls cp mv rm env awk nslookup cat mkdir grep tr cut expr sleep printf; do ln -s busybox $R/bin/$a; done \
  && chmod 1777 $R/tmp && chown -R 1000:1000 $R/data
@@ -41,6 +39,8 @@ RUN B=build/px4_sitl_default R=/rootfs \
 FROM scratch
 LABEL project=px4-x500
 COPY --from=build /rootfs/ /
+# The airframe goes in after the compile, so editing it rebuilds in seconds (rcS finds it by file name).
+COPY 10050_sihsim_x500 /px4/etc/init.d-posix/airframes/
 COPY entrypoint.sh /entrypoint.sh
 ENV PATH=/px4/bin:/bin
 USER 1000:1000
