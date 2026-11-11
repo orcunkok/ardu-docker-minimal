@@ -2,3 +2,4 @@ parameters*.bson
 dataman
 log/
 __pycache__/
+tests/sim.log

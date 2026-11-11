@@ -1,17 +1,20 @@
-# Example: two X500 SITL instances. Build first: DOCKER_BUILDKIT=0 docker build -t px4-x500/sitl .
-# Each container runs INSTANCE=0 internally (UDP 18570 GCS, 14580 API); the host ports differ.
+# Example: two X500 PX4 instances against an external sim on the Docker host.
+# Build first: DOCKER_BUILDKIT=0 docker build -t px4-x500/px4 .
+# Start the sims first, e.g. `sim/.venv/bin/python sim/src --instance 0` and `--instance 1` (TCP 4560 / 4561).
+# INSTANCE shifts every port: sim TCP 4560+INSTANCE, UDP 18570+INSTANCE (GCS), 14580+INSTANCE (API).
 services:
   x500_1:
-    image: px4-x500/sitl:latest
+    image: px4-x500/px4:latest
     environment:
-      SYSID: "1"
+      INSTANCE: "0"
+      # SIM_HOST: "192.168.1.30"           # sim on another machine (default: host.docker.internal)
       # GCS_HOST: "host.docker.internal"   # push MAVLink to a host GCS on 14550 (QGC auto-connect)
       # API_HOST: "192.168.1.50"           # push the API link to the OBC on 14540
-    # extra_hosts: ["host.docker.internal:host-gateway"]  # needed on Linux for GCS_HOST above
+    extra_hosts: ["host.docker.internal:host-gateway"]  # Linux; Docker Desktop has it anyway
     ports: ["18570:18570/udp", "14580:14580/udp"]
   x500_2:
-    image: px4-x500/sitl:latest
+    image: px4-x500/px4:latest
     environment:
-      SYSID: "2"
-      HOME_LOC: "47.397742,8.546594,488"  # offset start so the drones don't overlap
-    ports: ["18571:18570/udp", "14581:14580/udp"]
+      INSTANCE: "1"
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    ports: ["18571:18571/udp", "14581:14581/udp"]
